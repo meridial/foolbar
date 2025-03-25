@@ -15,7 +15,6 @@
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
-#include <stdlib.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -119,10 +118,8 @@ static int shm_alloc(){
 volatile void* map;
 
 void fill(uint64_t koloro){
-  unsigned int i = 0;
-  while(i < len){
+  for(unsigned int i = 0; i < len; i+=2){
     *(uint64_t*)(map+(i*sizeof(uint32_t))) = koloro;
-    i+=2;
   }
 }
 
@@ -245,6 +242,7 @@ static inline void paint_char(uint64_t c, unsigned int x, unsigned int y, uint32
     if((c >> i) & 1){
       ldiv_t d = ldiv(i, 8);
       *(uint32_t*)(map+PIXEL(x+d.rem, y+d.quot)*sizeof(uint32_t)) = koloro;
+
     }
   }
 }
@@ -276,30 +274,7 @@ static inline void paint_str_scale(const char* str, size_t len, unsigned int x, 
 
 // the following functions are solely for widgets
 // the following code is also extremely unsound. hope u dont mind some segfaults as a treat :3
-#define nonfreeuse_size 640
-char non_freeuse_scrolltext_buffer[nonfreeuse_size];
-static const unsigned int viewport_chars = 32;
-static const unsigned int viewport_size = viewport_chars*font_size;
-size_t ve = viewport_chars;
-size_t ce = viewport_chars;
-int utsname(){
-  struct utsname u;
-  uname(&u);
-  return snprintf(non_freeuse_scrolltext_buffer+ce,sizeof(non_freeuse_scrolltext_buffer)-ce,"%s-%s :: %s %s ", u.sysname, u.release, u.machine, u.nodename);
-}
 
-int sc_sysinfo(){
-  struct sysinfo si;
-  sysinfo(&si);
-  return snprintf(non_freeuse_scrolltext_buffer+ce, sizeof(non_freeuse_scrolltext_buffer)-ce, "FREERAM=%08lu FREESWAP=%08lu PROCS=%u UPTIME=%08lu ", si.freeram, si.freeswap, si.procs, si.uptime);
-}
-
-// update this value when adding functions! (idk how to get length of arrays)
-#define sflist_len 2
-int (*sflist[])() = {
-  utsname,
-  sc_sysinfo
-};
 
 static const uint32_t bc = 0xfffffadc;
 static const uint32_t fc = 0xffffcaba;
@@ -308,9 +283,44 @@ static const uint32_t tc = 0xff8a5752;
 static const uint64_t bc_packed = PACKEDCOLOR64(bc);
 static const uint64_t fc_packed = PACKEDCOLOR64(fc);
 static const uint64_t tc_packed = PACKEDCOLOR64(tc);
-static const struct wl_callback_listener surface_frame_lisn;
 
+// wait for batt_draw to perform first draw.
 
+char batt_fmt_buffer[32];
+static const char* batt_charge_full_path= "/sys/class/power_supply/BAT1/charge_full";
+static const char* batt_charge_now_path="/sys/class/power_supply/BAT1/charge_now";
+char charge_full_buf[16];
+char charge_now_buf[16];
+unsigned int batt_startx = 0;
+// monet depends on this!
+unsigned int viewport_startx = 0;
+void* batt_draw(void* v){
+  while(1){
+    int full_fd = open(batt_charge_full_path, O_RDONLY);
+    int now_fd = open(batt_charge_now_path, O_RDONLY);
+    if(full_fd < 0 || 0 > now_fd){
+      return 0;
+    }
+    size_t full_read = read(full_fd, charge_full_buf, 16);
+    read(now_fd, charge_now_buf, 16);
+    read(full_fd, charge_full_buf, 16);
+    // i fucking love null terminated strings
+    if(charge_full_buf[15] || charge_now_buf[15]){
+      return 0;
+    }
+    char *nptr;
+    long fnum = strtol(charge_full_buf, &nptr, 10);
+    long nnum = strtol(charge_now_buf, &nptr, 10);
+    double percento = (double)nnum/(double)fnum * 100.0;
+    int len = snprintf(batt_fmt_buffer, 16, "batt[%0.3f]", percento);  
+    // so slide tab wont overwrite us
+    viewport_startx = (len*font_size);
+    fill_rect(batt_startx, 0, len*font_size, height, fc_packed);
+    paint_str(batt_fmt_buffer, len, batt_startx, 1, tc);
+    sleep(8);    
+  }
+  return 0;
+}
 
 // time_draw and date_draw uses this. updated by time_draw
 struct tm* lt;
@@ -343,61 +353,64 @@ void* date_draw(void *v){
   return 0;
 }
 
-char batt_fmt_buffer[32];
-static const char* batt_charge_full_path= "/sys/class/power_supply/BAT1/charge_full";
-static const char* batt_charge_now_path="/sys/class/power_supply/BAT1/charge_now";
-char charge_full_buf[16];
-char charge_now_buf[16];
-void* batt_draw(void* v){
-  while(1){
-    int full_fd = open(batt_charge_full_path, O_RDONLY);
-    int now_fd = open(batt_charge_now_path, O_RDONLY);
-    if(full_fd < 0 || 0 > now_fd){
-      return 0;
-    }
-    size_t full_read = read(full_fd, charge_full_buf, 16);
-    read(now_fd, charge_now_buf, 16);
-    read(full_fd, charge_full_buf, 16);
-    // i fucking love null terminated strings
-    if(charge_full_buf[15] || charge_now_buf[15]){
-      return 0;
-    }
-    char *fullnptr = charge_full_buf;
-    //long fn = strtol(, char **, int);
-    long nn;
-  }
-  return 0;
-}
+
 
 // stuff that are drawn every frame go here
 // other stuff with different intervals go in threads
 
+#define nonfreeuse_size 640
+char non_freeuse_scrolltext_buffer[nonfreeuse_size];
+
+static const unsigned int viewport_chars = 32;
+static const unsigned int viewport_px = viewport_chars*font_size;
+int vps = 0;
+int ce = 0;
+int utsname(){
+  struct utsname u;
+  uname(&u);
+  return snprintf(non_freeuse_scrolltext_buffer+ce, sizeof(non_freeuse_scrolltext_buffer)-ce, "%s-%s :: %s %s ", u.sysname, u.release, u.machine, u.nodename);
+}
+
+int sc_sysinfo(){
+  struct sysinfo si;
+  sysinfo(&si);
+  return snprintf(non_freeuse_scrolltext_buffer+ce, sizeof(non_freeuse_scrolltext_buffer)-ce, "FREERAM=%08lu FREESWAP=%08lu PROCS=%u UPTIME=%08lu ", si.freeram, si.freeswap, si.procs, si.uptime);
+}
+
+// update this value when adding functions! (idk how to get length of arrays)
+#define sflist_len 2
+int (*sflist[])() = {
+  utsname,
+  sc_sysinfo
+};
+
+static const struct wl_callback_listener surface_frame_lisn;
 // if this variable reaches 8. move forward 1 char
 unsigned int slide_tab = 0;
+int fmtlen = 0;
 void monet(void* brick, struct wl_callback* callback, uint32_t delta){
   wl_callback_destroy(callback);
   callback = wl_surface_frame(surface);
   wl_callback_add_listener(callback, &surface_frame_lisn, brick);
   // this part is the scrolling text. very expensive
-  while(ce <= ve){
-    int x = sflist[rand()%sflist_len]();
-    if(x < 0 || ce+x >= nonfreeuse_size) {
-      ce = viewport_chars;
-      ve = viewport_chars;
-      break;
-    }
-    ce += x;
+  while(ce <= vps+viewport_chars){
+    fmtlen = sflist[rand()%sflist_len]();
+    ce+=fmtlen;
   }
-  fill_rect(0, 0, viewport_chars*font_size, height, bc_packed);
-  // -1 char for smooth scrolling
-  paint_str((non_freeuse_scrolltext_buffer+ve)-viewport_chars, viewport_chars-1, 8-slide_tab, 1, tc);
-  fill_rect(viewport_size-8, 0, 8, height, bc_packed);
-  slide_tab++;
-  if (slide_tab >=8){
+  if(fmtlen < 0 || ce+fmtlen >= nonfreeuse_size || vps+viewport_chars >= nonfreeuse_size) {
+    ce = 0;
+    vps = 0;;
+  }
+  fill_rect(viewport_startx, 0, viewport_px, height, bc_packed);
+  // -slide_tab for smooth scrolling
+  //printf("%i", viewport_startx);
+  paint_str(non_freeuse_scrolltext_buffer+vps, viewport_chars, viewport_startx+font_size-slide_tab, 1, tc);
+  fill_rect(viewport_startx + viewport_px - font_size, 0, 16, height, bc_packed);
+  if (slide_tab >= 8){
     slide_tab=0;
-    ve++;
+    vps++;
   }
-  
+  slide_tab++;
   wl_surface_attach(surface, brick, 0, 0);
   wl_surface_damage(surface, 0, 0, INT32_MAX, INT32_MAX); // wayland-book set me up. dont use damge_buffer
   wl_surface_commit(surface);
@@ -408,12 +421,13 @@ static const struct wl_callback_listener surface_frame_lisn = {
   .done = monet
 };
 
-#define draw_fn_count 2
-static void* (*draw_fn[draw_fn_count])(void*) = {
+#define sagit 3
+static void* (*sagit_fn[sagit])(void*) = {
   time_draw,
   date_draw,
+  batt_draw,
 };
-pthread_t draw_fn_threads[draw_fn_count];
+pthread_t draw_fn_threads[sagit];
 
 int main(){
   struct wl_display* parad = wl_display_connect(NULL);
@@ -455,13 +469,15 @@ int main(){
   fill(bc_packed);
   // create seperate draw threeads
   int i = 0;
-  while(i < draw_fn_count){  
-    pthread_create(draw_fn_threads+i, 0, draw_fn[i], 0);
+  while(i < sagit){  
+    pthread_create(draw_fn_threads+i, 0, sagit_fn[i], 0);
     i++;
   }
-  
+  // torch currently given to batt_draw:
+  while(!viewport_startx){
+  }
   while(wl_display_dispatch(parad) > 0 && should_continue){
-   usleep(50000);
+   usleep(66666);
   }
   wl_surface_destroy(surface);
   wl_display_disconnect(parad);

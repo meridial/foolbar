@@ -15,6 +15,9 @@ You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
 - compositor integrations (workspaces, etc..)
 - font scaling
 
+### NOTE (for me. myself and I):
+- monet scrolltext depends on viewport_startx by batt_draw
+
 
 ## Requirements for the default (package names on alpine):
 ```
