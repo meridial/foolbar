@@ -15,6 +15,8 @@
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
+#include <stdint.h>
+#include <stdio.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -22,7 +24,8 @@ static const unsigned int height = 10;
 
 // took me a night to debug ts. forgor the paren
 #define PIXEL(x,y) (((y) * width) + x)
-
+// convert from 32bit ARGB to packed 64-bit ARGBARGB
+#define PACKEDCOLOR64(c) ((uint64_t)c << sizeof(uint32_t)*8 | (uint64_t)c)
 // note: the only supported formats are anything 4 bytes
 // the most common on-mem format is BRGA8888. which im using
 // but when using literals. you should write in ARGB (little endian)
@@ -101,7 +104,7 @@ static const struct wl_registry_listener rlisn = {
 
 
 static int shm_alloc(){
-  // no retries needed!
+  // no retries needed! (probably)
   char nawa[] = "if_you-use-This-filename_For_some_dumbass_fucking_reason_i-will-scatter-your-_retarded_fucking-ass-across-the_fucking_stars___foolbar__shmfile";
   int fd = shm_open(nawa, O_RDWR | O_CREAT | O_EXCL, 0600);
   if (fd < 0)
@@ -114,17 +117,15 @@ static int shm_alloc(){
   return fd;
 }
 
-uint32_t* map;
+volatile void* map;
 
-void fill(uint32_t koloro){
-  uint32_t* v = map;
-  while(v < (map+len)){
-    *v = koloro;
-    v++;
+void fill(uint64_t koloro){
+  unsigned int i = 0;
+  while(i < len){
+    *(uint64_t*)(map+(i*sizeof(uint32_t))) = koloro;
+    i+=2;
   }
 }
-
-// changing this doesnt actually do anything currently (except make the space bigger) :3
 
 // note. start drawing right->left ->up
 // reference font is from TempleOS (commodore petscii) (with some changes)
@@ -228,33 +229,51 @@ static const uint64_t char_map[] = {
   ['|'] = 0b0000000000011000000110000001100000011000000110000001100000011000,
   ['}'] = 0b0000000000001100000110000001100001110000000110000001100000001100,
   ['~'] = 0b0000000000000000000000000000000000000000011000101101011010001100,
-  [0x7f] = 0,
+  [0xff] = 0,
 };
 
-static const char test_str[] = "`~~p++9+uvxz{|}016ABCDE##::$!%klm/,\\()238jh45soq7;r tuv  <=?=>nFGHIJKiLMNOPQRSWXYZ[^]abcdefg";
 
-static inline void fill_rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, uint32_t koloro){
-  for(int yi = y; yi < y+h; yi++){
-    for(int xi = x; xi < x+w; xi++){
-      *(map + PIXEL(xi,yi)) = koloro;
+static inline void fill_rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, uint64_t koloro){
+  unsigned int yl = y+h;
+  unsigned int xl = x+w;
+  for(unsigned int yi = y; yi < yl; yi++){
+    for(unsigned int xi = x; xi < xl; xi+=2){
+      *(uint64_t*)(map + PIXEL(xi,yi)*sizeof(uint32_t)) = koloro;
     }
   }
 }
 
-// idk how to scale text. fuck
 static inline void paint_char(uint64_t c, unsigned int x, unsigned int y, uint32_t koloro){
   for(size_t i = 0; i < 64; i++){
     if((c >> i) & 1){
       lldiv_t d = lldiv(i, 8);
-      *(map+PIXEL(x+d.rem, y+d.quot)) = koloro;
+      *(uint32_t*)(map+PIXEL(x+d.rem, y+d.quot)*sizeof(uint32_t)) = koloro;
     }
   }
 }
 
+// slow as FUCK
+// literal scale. size is 8 * scale
+// did i mention that its so fucking slow?
+static inline void paint_char_scale(uint64_t c, unsigned int x, unsigned int y, uint64_t koloro, unsigned int scale){
+  for(size_t i = 0; i < 64; i++){
+    if((c >> i) & 1){
+      lldiv_t d = lldiv(i, 8);
+      fill_rect(x+d.rem*scale, y+d.quot*scale, scale, scale, koloro);
+    }
+  }
+}
 
 static inline void paint_str(const char* str, size_t len, unsigned int x, unsigned int y, uint32_t koloro){
   for(unsigned int i = 0; i < len; i++){
     paint_char(char_map[*(str+i)], x+(i*font_size), y, koloro);
+  }
+}
+
+
+static inline void paint_str_scale(const char* str, size_t len, unsigned int x, unsigned int y, uint64_t koloro, unsigned int scale){
+  for(unsigned int i = 0; i < len; i++){
+    paint_char_scale(char_map[*(str+i)], x+((i*font_size)*scale), y, koloro, scale);
   }
 }
 
@@ -288,6 +307,10 @@ int (*sflist[])() = {
 static const uint32_t bc = 0xfffffadc;
 static const uint32_t fc = 0xffffcaba;
 static const uint32_t tc = 0xff8a5752;
+
+static const uint64_t bc_packed = PACKEDCOLOR64(bc);
+static const uint64_t fc_packed = PACKEDCOLOR64(fc);
+static const uint64_t tc_packed = PACKEDCOLOR64(tc);
 static const struct wl_callback_listener surface_frame_lisn;
 
 
@@ -302,7 +325,7 @@ void* time_draw(){
     int time_len = snprintf(time_fmt_buffer, 32, "%02i%02i%0i", lt->tm_sec, lt->tm_min, lt->tm_hour);
     int acc = time_len*font_size;
     int time_x = width-acc;
-    fill_rect(time_x, 0, acc, height, fc);
+    fill_rect(time_x, 0, acc, height, fc_packed);
     paint_str(time_fmt_buffer, time_len, time_x, 1, tc);
     usleep(100000);
   }
@@ -316,7 +339,7 @@ void* date_draw(void *v){
     size_t date_len = strftime(date_fmt_buffer, 64, "%a %d %B %Y", lt);
     size_t acc = date_len*font_size;
     size_t date_x = (width/2)-(acc/2);
-    fill_rect(date_x, 0, acc, height, bc);
+    fill_rect(date_x, 0, acc, height, bc_packed);
     paint_str(date_fmt_buffer, date_len, date_x, 1, tc);
     sleep(120);
   }
@@ -341,9 +364,9 @@ void monet(void* brick, struct wl_callback* callback, uint32_t delta){
     }
     ce += x;
   }
-  fill_rect(0, 0, viewport_chars*font_size, height, cfc);
+  fill_rect(0, 0, viewport_chars*font_size, height, bc_packed);
   paint_str((non_freeuse_scrolltext_buffer+ve)-viewport_chars, viewport_chars-1, 8-slide_tab, 1, tc);
-  fill_rect(viewport_size-8, 0, 8, height, bc);
+  fill_rect(viewport_size-8, 0, 8, height, bc_packed);
   slide_tab++;
   if (slide_tab >=8){
     slide_tab=0;
@@ -391,7 +414,7 @@ int main(){
   zwlr_layer_surface_v1_set_anchor(layer_surface ,ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT); 
   zwlr_layer_surface_v1_add_listener(layer_surface, &zwlr_lisn, 0);
   zwlr_layer_surface_v1_set_size(layer_surface, 0, height);
-  zwlr_layer_surface_v1_set_exclusive_zone(layer_surface, 10);
+  zwlr_layer_surface_v1_set_exclusive_zone(layer_surface, height);
   wl_surface_commit(surface);
   while(wl_display_dispatch(parad) > 0 && !configured){}
   wl_surface_attach(surface, brick, 0, 0);
@@ -404,7 +427,7 @@ int main(){
   // init rand for scrolling text
   srand(0);
   // no repeating fills
-  fill(bc);
+  fill(PACKEDCOLOR64(bc));
   // create seperate draw threeads
   int i = 0;
   while(i < draw_fn_count){  
