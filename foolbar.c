@@ -15,8 +15,7 @@
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
-#include <stdint.h>
-#include <stdio.h>
+#include <stdlib.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -234,19 +233,17 @@ static const uint64_t char_map[] = {
 
 
 static inline void fill_rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, uint64_t koloro){
-  unsigned int yl = y+h;
-  unsigned int xl = x+w;
-  for(unsigned int yi = y; yi < yl; yi++){
-    for(unsigned int xi = x; xi < xl; xi+=2){
-      *(uint64_t*)(map + PIXEL(xi,yi)*sizeof(uint32_t)) = koloro;
-    }
+  unsigned int nx = w*h;
+  for(unsigned int i = 0; i < nx; i++){
+    ldiv_t d = ldiv(i, w);
+    *(uint64_t*)(map+PIXEL(x+d.rem, y+d.quot)*sizeof(uint32_t)) = koloro;
   }
 }
 
 static inline void paint_char(uint64_t c, unsigned int x, unsigned int y, uint32_t koloro){
   for(size_t i = 0; i < 64; i++){
     if((c >> i) & 1){
-      lldiv_t d = lldiv(i, 8);
+      ldiv_t d = ldiv(i, 8);
       *(uint32_t*)(map+PIXEL(x+d.rem, y+d.quot)*sizeof(uint32_t)) = koloro;
     }
   }
@@ -258,7 +255,7 @@ static inline void paint_char(uint64_t c, unsigned int x, unsigned int y, uint32
 static inline void paint_char_scale(uint64_t c, unsigned int x, unsigned int y, uint64_t koloro, unsigned int scale){
   for(size_t i = 0; i < 64; i++){
     if((c >> i) & 1){
-      lldiv_t d = lldiv(i, 8);
+      ldiv_t d = ldiv(i, 8);
       fill_rect(x+d.rem*scale, y+d.quot*scale, scale, scale, koloro);
     }
   }
@@ -278,7 +275,7 @@ static inline void paint_str_scale(const char* str, size_t len, unsigned int x, 
 }
 
 // the following functions are solely for widgets
-// the following code is also extremely unsound. hope u dont mind some segfaultds as a treat :3
+// the following code is also extremely unsound. hope u dont mind some segfaults as a treat :3
 #define nonfreeuse_size 640
 char non_freeuse_scrolltext_buffer[nonfreeuse_size];
 static const unsigned int viewport_chars = 32;
@@ -327,7 +324,7 @@ void* time_draw(){
     int time_x = width-acc;
     fill_rect(time_x, 0, acc, height, fc_packed);
     paint_str(time_fmt_buffer, time_len, time_x, 1, tc);
-    usleep(100000);
+    sleep(1);
   }
   return 0;
 }
@@ -346,9 +343,36 @@ void* date_draw(void *v){
   return 0;
 }
 
+char batt_fmt_buffer[32];
+static const char* batt_charge_full_path= "/sys/class/power_supply/BAT1/charge_full";
+static const char* batt_charge_now_path="/sys/class/power_supply/BAT1/charge_now";
+char charge_full_buf[16];
+char charge_now_buf[16];
+void* batt_draw(void* v){
+  while(1){
+    int full_fd = open(batt_charge_full_path, O_RDONLY);
+    int now_fd = open(batt_charge_now_path, O_RDONLY);
+    if(full_fd < 0 || 0 > now_fd){
+      return 0;
+    }
+    size_t full_read = read(full_fd, charge_full_buf, 16);
+    read(now_fd, charge_now_buf, 16);
+    read(full_fd, charge_full_buf, 16);
+    // i fucking love null terminated strings
+    if(charge_full_buf[15] || charge_now_buf[15]){
+      return 0;
+    }
+    char *fullnptr = charge_full_buf;
+    //long fn = strtol(, char **, int);
+    long nn;
+  }
+  return 0;
+}
+
 // stuff that are drawn every frame go here
 // other stuff with different intervals go in threads
-uint32_t cfc = bc;
+
+// if this variable reaches 8. move forward 1 char
 unsigned int slide_tab = 0;
 void monet(void* brick, struct wl_callback* callback, uint32_t delta){
   wl_callback_destroy(callback);
@@ -365,6 +389,7 @@ void monet(void* brick, struct wl_callback* callback, uint32_t delta){
     ce += x;
   }
   fill_rect(0, 0, viewport_chars*font_size, height, bc_packed);
+  // -1 char for smooth scrolling
   paint_str((non_freeuse_scrolltext_buffer+ve)-viewport_chars, viewport_chars-1, 8-slide_tab, 1, tc);
   fill_rect(viewport_size-8, 0, 8, height, bc_packed);
   slide_tab++;
@@ -427,7 +452,7 @@ int main(){
   // init rand for scrolling text
   srand(0);
   // no repeating fills
-  fill(PACKEDCOLOR64(bc));
+  fill(bc_packed);
   // create seperate draw threeads
   int i = 0;
   while(i < draw_fn_count){  
