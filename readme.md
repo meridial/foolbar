@@ -38,5 +38,3 @@ wayland-scanner private-code ./wlr-layer-shell-unstable-v1.xml wlr-layer-shell-u
 
 cc xdg_shell.c wlr-layer-shell-unstable-v1.c foolbar.c
 ```
-
-I am not quiet sure what license to choose. But i heard MIT is pretty open. so I chose i
