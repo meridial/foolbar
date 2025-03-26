@@ -15,6 +15,7 @@
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
+#include <stdint.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -261,14 +262,14 @@ static inline void paint_char_scale(uint64_t c, unsigned int x, unsigned int y, 
 
 static inline void paint_str(const char* str, size_t len, unsigned int x, unsigned int y, uint32_t koloro){
   for(unsigned int i = 0; i < len; i++){
-    paint_char(char_map[*(str+i)], x+(i*font_size), y, koloro);
+    paint_char(*(char_map+*(str+i)), x+(i*font_size), y, koloro);
   }
 }
 
 
 static inline void paint_str_scale(const char* str, size_t len, unsigned int x, unsigned int y, uint64_t koloro, unsigned int scale){
   for(unsigned int i = 0; i < len; i++){
-    paint_char_scale(char_map[*(str+i)], x+((i*font_size)*scale), y, koloro, scale);
+    paint_char_scale(*(char_map+*(str+i)), x+((i*font_size)*scale), y, koloro, scale);
   }
 }
 
@@ -325,7 +326,7 @@ void* batt_draw(void* v){
 // time_draw and date_draw uses this. updated by time_draw
 struct tm* lt;
 char time_fmt_buffer[32];
-void* time_draw(){
+void* time_draw(void* v){
   while(should_continue){
     time_t t = time(0);
     lt = localtime(&t);
