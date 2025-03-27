@@ -16,6 +16,7 @@
 #include "sys/sysinfo.h"
 #include "pthread.h"
 #include <stdint.h>
+#include <wayland-client-core.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -292,9 +293,7 @@ static const char* batt_charge_full_path= "/sys/class/power_supply/BAT1/charge_f
 static const char* batt_charge_now_path="/sys/class/power_supply/BAT1/charge_now";
 char charge_full_buf[16];
 char charge_now_buf[16];
-unsigned int batt_startx = 0;
-// monet depends on this!
-unsigned int viewport_startx = 0;
+unsigned int batt_acc;
 void* batt_draw(void* v){
   while(1){
     int full_fd = open(batt_charge_full_path, O_RDONLY);
@@ -314,10 +313,9 @@ void* batt_draw(void* v){
     long nnum = strtol(charge_now_buf, &nptr, 10);
     double percento = (double)nnum/(double)fnum * 100.0;
     int len = snprintf(batt_fmt_buffer, 16, "batt[%0.3f]", percento);  
-    // so slide tab wont overwrite us
-    viewport_startx = (len*font_size);
-    fill_rect(batt_startx, 0, len*font_size, height, fc_packed);
-    paint_str(batt_fmt_buffer, len, batt_startx, 1, tc);
+    batt_acc = len*font_size;
+    fill_rect(0, 0, batt_acc, height, fc_packed);
+    paint_str(batt_fmt_buffer, len, 0, 1, tc);
     sleep(8);    
   }
   return 0;
@@ -330,7 +328,7 @@ void* time_draw(void* v){
   while(should_continue){
     time_t t = time(0);
     lt = localtime(&t);
-    int time_len = snprintf(time_fmt_buffer, 32, "%02i%02i%0i", lt->tm_sec, lt->tm_min, lt->tm_hour);
+    int time_len = snprintf(time_fmt_buffer, 32, "%02i%02i%02i", lt->tm_sec, lt->tm_min, lt->tm_hour);
     int acc = time_len*font_size;
     int time_x = width-acc;
     fill_rect(time_x, 0, acc, height, fc_packed);
@@ -361,7 +359,6 @@ void* date_draw(void *v){
 
 #define nonfreeuse_size 640
 char non_freeuse_scrolltext_buffer[nonfreeuse_size];
-
 static const unsigned int viewport_chars = 32;
 static const unsigned int viewport_px = viewport_chars*font_size;
 int vps = 0;
@@ -402,11 +399,11 @@ void monet(void* brick, struct wl_callback* callback, uint32_t delta){
     ce = 0;
     vps = 0;;
   }
-  fill_rect(viewport_startx, 0, viewport_px, height, bc_packed);
+  fill_rect(batt_acc, 0, viewport_px, height, bc_packed);
   // -slide_tab for smooth scrolling
   //printf("%i", viewport_startx);
-  paint_str(non_freeuse_scrolltext_buffer+vps, viewport_chars, viewport_startx+font_size-slide_tab, 1, tc);
-  fill_rect(viewport_startx + viewport_px - font_size, 0, 16, height, bc_packed);
+  paint_str(non_freeuse_scrolltext_buffer+vps, viewport_chars, batt_acc+font_size-slide_tab, 1, tc);
+  fill_rect(batt_acc + viewport_px - font_size, 0, 16, height, bc_packed);
   if (slide_tab >= 8){
     slide_tab=0;
     vps++;
@@ -474,11 +471,8 @@ int main(){
     pthread_create(draw_fn_threads+i, 0, sagit_fn[i], 0);
     i++;
   }
-  // torch currently given to batt_draw:
-  while(!viewport_startx){
-  }
   while(wl_display_dispatch(parad) > 0 && should_continue){
-   usleep(66666);
+    usleep(66666);
   }
   wl_surface_destroy(surface);
   wl_display_disconnect(parad);

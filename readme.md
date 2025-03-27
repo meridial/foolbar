@@ -16,7 +16,7 @@ You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
 - font scaling
 
 ### NOTE (for me. myself and I):
-- monet scrolltext depends on viewport_startx by batt_draw
+- monet scrolltext depends on batt_acc by batt_draw
 
 
 ## Requirements for the default (package names on alpine):
