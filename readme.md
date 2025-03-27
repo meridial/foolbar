@@ -21,7 +21,7 @@ You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
 - monet scrolltext depends on batt_acc by batt_draw
 
 
-## Requirements for the default (package names on alpine):
+## Requirements (package names on alpine):
 ```
 wayland
 wayland-dev

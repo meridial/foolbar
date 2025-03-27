@@ -21,9 +21,9 @@ static const unsigned int width = 1024;
 static const unsigned int height = 10;
 
 // took me a night to debug ts. forgor the paren
-#define PIXEL(x,y) (((y) * width) + x)
+#define PIXEL(x,y) (((y) * width) + (x))
 // convert from 32bit ARGB to packed 64-bit ARGBARGB
-#define PACKEDCOLOR64(c) ((uint64_t)c << sizeof(uint32_t)*8 | (uint64_t)c)
+#define PACKEDCOLOR64(c) ((uint64_t)c << 32 | (uint64_t)c)
 // note: the only supported formats are anything 4 bytes
 // the most common on-mem format is BRGA8888. which im using
 // but when using literals. you should write in ARGB (little endian)
@@ -115,11 +115,12 @@ static int shm_alloc(){
   return fd;
 }
 
-volatile void* map;
+void* map;
 
+// find a way to use +=8. it wont work for some fucking reason
 void fill(uint64_t koloro){
-  for(unsigned int i = 0; i < len; i+=2){
-    *(uint64_t*)(map+(i*sizeof(uint32_t))) = koloro;
+  for(size_t i = 0; i < (len/2); i++){
+    *((uint64_t*)map+i) = koloro;
   }
 }
 
@@ -231,9 +232,9 @@ static const uint64_t char_map[] = {
 
 static inline void fill_rect(unsigned int x, unsigned int y, unsigned int w, unsigned int h, uint64_t koloro){
   unsigned int nx = w*h;
-  for(unsigned int i = 0; i < nx; i++){
+  for(unsigned int i = 0; i < nx; i+=2){
     ldiv_t d = ldiv(i, w);
-    *(uint64_t*)(map+PIXEL(x+d.rem, y+d.quot)*sizeof(uint32_t)) = koloro;
+    *(uint64_t*)(map+PIXEL((x+d.rem), y+d.quot)*4) = koloro;
   }
 }
 
@@ -241,8 +242,7 @@ static inline void paint_char(uint64_t c, unsigned int x, unsigned int y, uint32
   for(size_t i = 0; i < 64; i++){
     if((c >> i) & 1){
       ldiv_t d = ldiv(i, 8);
-      *(uint32_t*)(map+PIXEL(x+d.rem, y+d.quot)*sizeof(uint32_t)) = koloro;
-
+      *(uint32_t*)(map+PIXEL(x+d.rem, y+d.quot)*4) = koloro;
     }
   }
 }
