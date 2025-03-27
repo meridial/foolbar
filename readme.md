@@ -1,5 +1,7 @@
 # foolbar
 
+![sample](sample.png)
+
 I made this bar for my usage :3  
 You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
 

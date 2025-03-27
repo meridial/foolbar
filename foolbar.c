@@ -15,8 +15,6 @@
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
-#include <stdint.h>
-#include <wayland-client-core.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -291,23 +289,24 @@ static const uint64_t tc_packed = PACKEDCOLOR64(tc);
 char batt_fmt_buffer[32];
 static const char* batt_charge_full_path= "/sys/class/power_supply/BAT1/charge_full";
 static const char* batt_charge_now_path="/sys/class/power_supply/BAT1/charge_now";
+static const char* batt_status_path = "/sys/class/power_supply/BAT1/status";
 char charge_full_buf[16];
 char charge_now_buf[16];
+char charge_status_buf[16];
 unsigned int batt_acc;
+unsigned int batt_sleep_ms = 10000000;
 void* batt_draw(void* v){
-  while(1){
-    int full_fd = open(batt_charge_full_path, O_RDONLY);
-    int now_fd = open(batt_charge_now_path, O_RDONLY);
-    if(full_fd < 0 || 0 > now_fd){
-      return 0;
-    }
-    size_t full_read = read(full_fd, charge_full_buf, 16);
-    read(now_fd, charge_now_buf, 16);
-    read(full_fd, charge_full_buf, 16);
+  int full_fd = open(batt_charge_full_path, O_RDONLY);
+  int now_fd = open(batt_charge_now_path, O_RDONLY);
+  int status_fd = open(batt_status_path, O_RDONLY);
+  if(full_fd < 0 || 0 > now_fd || status_fd < 0){
+    return 0;
+  }
+  while(1){  
+    int x = read(now_fd, charge_now_buf, 15);
+    read(full_fd, charge_full_buf, 15);
+    read(status_fd, charge_status_buf, 15);
     // i fucking love null terminated strings
-    if(charge_full_buf[15] || charge_now_buf[15]){
-      return 0;
-    }
     char *nptr;
     long fnum = strtol(charge_full_buf, &nptr, 10);
     long nnum = strtol(charge_now_buf, &nptr, 10);
@@ -316,7 +315,15 @@ void* batt_draw(void* v){
     batt_acc = len*font_size;
     fill_rect(0, 0, batt_acc, height, fc_packed);
     paint_str(batt_fmt_buffer, len, 0, 1, tc);
-    sleep(8);    
+    // reset file descriptors
+    lseek(full_fd, 0, SEEK_SET);
+    lseek(now_fd, 0, SEEK_SET);
+    lseek(status_fd, 0, SEEK_SET);
+
+    if(strcmp(charge_status_buf, "Not Charging")){
+      batt_sleep_ms = 7000000;
+    }
+    usleep(batt_sleep_ms);    
   }
   return 0;
 }
@@ -338,7 +345,7 @@ void* time_draw(void* v){
   return 0;
 }
 
-char date_fmt_buffer[64];
+char date_fmt_buffer[32];
 void* date_draw(void *v){
   // it'll sleep long so doesnt really matter
   while (1){
