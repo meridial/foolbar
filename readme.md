@@ -3,7 +3,8 @@
 ![sample](/sample.png)
 
 ![readme en esperanto](/readmes/esperanto.md)
-![readme ภาษาไทย] (/readmes/thai.md)
+
+![readme ภาษาไืทย](/readmes/thai.md)
 
 I made this bar for my usage :3  
 You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
