@@ -2,7 +2,8 @@
 
 ![sample](/sample.png)
 
-![README en esperanto](/aliaj_readme/esperanto.md)
+![readme en esperanto](/readmes/esperanto.md)
+![readme ภาษาไทย] (/readmes/thai.md)
 
 I made this bar for my usage :3  
 You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
@@ -19,7 +20,7 @@ You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
 wayland
 wayland-dev
 wayland-protocols
-```
+``` 
 - A trusty C compiler
 - compositor with zwlr-layer-shell support
 - A 64 bit CPU
