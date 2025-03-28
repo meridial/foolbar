@@ -15,6 +15,8 @@
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
+#include <stdint.h>
+#include <stdio.h>
 
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
@@ -23,7 +25,9 @@ static const unsigned int height = 10;
 // took me a night to debug ts. forgor the paren
 #define PIXEL(x,y) (((y) * width) + (x))
 // convert from 32bit ARGB to packed 64-bit ARGBARGB
-#define PACKEDCOLOR64(c) ((uint64_t)c << 32 | (uint64_t)c)
+#define PACKEDCOLOR64(c) ((uint64_t)(c) << 32 | (uint64_t)(c))
+// we must be inclusive
+#define PACKEDCOLOUR64(c) ((uint64_t)(c) << 32 | (uint64_t)(c))
 // note: the only supported formats are anything 4 bytes
 // the most common on-mem format is BRGA8888. which im using
 // but when using literals. you should write in ARGB (little endian)
@@ -92,7 +96,7 @@ void rm_handler(
   struct wl_registry* registry,
   uint32_t nawa
 ){
-    printf("remove: %u", nawa);
+    printf("remove: %u\n", nawa);
 }  
 
 static const struct wl_registry_listener rlisn = {
@@ -281,10 +285,9 @@ static const uint32_t fc = 0xffffcaba;
 static const uint32_t tc = 0xff8a5752;
 
 static const uint64_t bc_packed = PACKEDCOLOR64(bc);
-static const uint64_t fc_packed = PACKEDCOLOR64(fc);
+static const uint64_t fc_packed = PACKEDCOLOUR64(fc);
 static const uint64_t tc_packed = PACKEDCOLOR64(tc);
 
-// wait for batt_draw to perform first draw.
 
 char batt_fmt_buffer[32];
 static const char* batt_charge_full_path= "/sys/class/power_supply/BAT1/charge_full";
@@ -294,36 +297,45 @@ char charge_full_buf[16];
 char charge_now_buf[16];
 char charge_status_buf[16];
 unsigned int batt_acc;
-unsigned int batt_sleep_ms = 10000000;
+uint64_t batt_lowpwr_color_cycle[] = {
+  fc_packed,
+  PACKEDCOLOR64(0xff1a0000)
+};
+unsigned int batt_lowpwr_cycle_counter = 0;
 void* batt_draw(void* v){
   int full_fd = open(batt_charge_full_path, O_RDONLY);
   int now_fd = open(batt_charge_now_path, O_RDONLY);
   int status_fd = open(batt_status_path, O_RDONLY);
   if(full_fd < 0 || 0 > now_fd || status_fd < 0){
+    printf("couldn't open one of batt status paths\n");
     return 0;
   }
   while(1){  
-    int x = read(now_fd, charge_now_buf, 15);
+    read(now_fd, charge_now_buf, 15);
     read(full_fd, charge_full_buf, 15);
     read(status_fd, charge_status_buf, 15);
     // i fucking love null terminated strings
     char *nptr;
     long fnum = strtol(charge_full_buf, &nptr, 10);
     long nnum = strtol(charge_now_buf, &nptr, 10);
-    double percento = (double)nnum/(double)fnum * 100.0;
-    int len = snprintf(batt_fmt_buffer, 16, "batt[%0.3f]", percento);  
+    double s = (double)nnum/(double)fnum;
+    double p = s * 100.0;
+    // damn just give me a number
+    int is_eating_biscuits = strcmp(charge_status_buf, "Discharging\n");
+    int len = snprintf(batt_fmt_buffer, 16, "batt%c[%0.3f]", is_eating_biscuits ? 'c' : 'd', p);  
     batt_acc = len*font_size;
-    fill_rect(0, 0, batt_acc, height, fc_packed);
+    if(!is_eating_biscuits && s < 0.12){
+      batt_lowpwr_cycle_counter ^= 1;
+      fill_rect(0, 0, batt_acc, height , batt_lowpwr_color_cycle[batt_lowpwr_cycle_counter]);
+    } else {
+      fill_rect(0, 0, batt_acc, height, fc_packed);
+    }
     paint_str(batt_fmt_buffer, len, 0, 1, tc);
     // reset file descriptors
     lseek(full_fd, 0, SEEK_SET);
     lseek(now_fd, 0, SEEK_SET);
     lseek(status_fd, 0, SEEK_SET);
-
-    if(strcmp(charge_status_buf, "Not Charging")){
-      batt_sleep_ms = 7000000;
-    }
-    usleep(batt_sleep_ms);    
+    usleep(777777);    
   }
   return 0;
 }
@@ -397,6 +409,7 @@ void monet(void* brick, struct wl_callback* callback, uint32_t delta){
   wl_callback_destroy(callback);
   callback = wl_surface_frame(surface);
   wl_callback_add_listener(callback, &surface_frame_lisn, brick);
+
   // this part is the scrolling text. very expensive
   while(ce <= vps+viewport_chars){
     fmtlen = sflist[rand()%sflist_len]();
@@ -416,6 +429,7 @@ void monet(void* brick, struct wl_callback* callback, uint32_t delta){
     vps++;
   }
   slide_tab++;
+  
   wl_surface_attach(surface, brick, 0, 0);
   wl_surface_damage(surface, 0, 0, INT32_MAX, INT32_MAX); // wayland-book set me up. dont use damge_buffer
   wl_surface_commit(surface);
@@ -432,6 +446,7 @@ static void* (*sagit_fn[sagit])(void*) = {
   date_draw,
   batt_draw,
 };
+
 pthread_t draw_fn_threads[sagit];
 
 int main(){

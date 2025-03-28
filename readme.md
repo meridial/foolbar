@@ -1,21 +1,14 @@
 # foolbar
 
-![sample](sample.png)
+![sample](/sample.png)
+
+![README en esperanto](/aliaj_readme/esperanto.md)
 
 I made this bar for my usage :3  
 You shouldn't use this directly. (maybe as a zwlr-layer-shell example)
 
-
-### provides extremely unoptimized shi:
-- handwritten charcter bitmap `uint64_t char_map[]` based on the font used in **TempleOS**
-- function for drawing said bitmap `void paint_char`
-- function for drawing string of said bitmap `void paint_str`
-- function for drawing rectangles `void fill_rect`
-- function for filling the whole buffer with a color `void fill`
-
 ### doesnt support:
 - compositor integrations (workspaces, etc..)
-- font scaling
 
 ### NOTE (for me. myself and I):
 - monet scrolltext depends on batt_acc by batt_draw
@@ -29,7 +22,7 @@ wayland-protocols
 ```
 - A trusty C compiler
 - compositor with zwlr-layer-shell support
-- CPU as fast. or faster than 100Mhz (rawdogging a scrolling text is quiet expensive)
+- A 64 bit CPU
 - `wlr-layer-shell-unstable-v1.xml` from wlroots/protocol (clone it or smth)
 - System with pthreads support (currently i use linux. you might need to change a few things)
 
