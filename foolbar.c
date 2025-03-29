@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 199309L
+
 #include "stddef.h"
 #include "stdio.h"
 #include "fcntl.h"
@@ -8,19 +10,17 @@
 #include "stdlib.h"
 #include "string.h"
 #include "stdbool.h"
+#include "time.h"
 // wayland-scanner generated!
 #include "wlr-layer-shell-unstable-v1.h"
 // these are for my widgets and shi. you wont see them in the wayland code
-#include "time.h"
 #include "sys/utsname.h"
 #include "sys/sysinfo.h"
 #include "pthread.h"
-#include <stdint.h>
-#include <stdio.h>
-
 // im too lazy to allow the wm to set this automatically. pls set urself :3
 static const unsigned int width = 1024;
 static const unsigned int height = 10;
+
 
 // took me a night to debug ts. forgor the paren
 #define PIXEL(x,y) (((y) * width) + (x))
@@ -335,7 +335,7 @@ void* batt_draw(void* v){
     lseek(full_fd, 0, SEEK_SET);
     lseek(now_fd, 0, SEEK_SET);
     lseek(status_fd, 0, SEEK_SET);
-    usleep(777777);    
+    sleep(7);    
   }
   return 0;
 }
@@ -449,6 +449,11 @@ static void* (*sagit_fn[sagit])(void*) = {
 
 pthread_t draw_fn_threads[sagit];
 
+static const struct timespec sl = {
+  .tv_sec = 0,
+  .tv_nsec = 77777777,
+};
+
 int main(){
   struct wl_display* parad = wl_display_connect(NULL);
   if(!parad){
@@ -494,7 +499,7 @@ int main(){
     i++;
   }
   while(wl_display_dispatch(parad) > 0 && should_continue){
-    usleep(66666);
+    nanosleep(&sl, 0);
   }
   wl_surface_destroy(surface);
   wl_display_disconnect(parad);

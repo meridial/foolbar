@@ -26,7 +26,7 @@ wayland-scanner private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-s
 wayland-scanner client-header ./wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1.h
 wayland-scanner private-code ./wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1.c
 
-cc xdg_shell.c wlr-layer-shell-unstable-v1.c foolbar.c -l wayland-client -Wall -Wextra -Wno-unused-parameter
+cc xdg_shell.c wlr-layer-shell-unstable-v1.c foolbar.c -l wayland-client -Wall -Wextra -Wno-unused-parameter -std=c99
 ```
 
 Havu amuzon!
